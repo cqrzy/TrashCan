@@ -1,4 +1,3 @@
---This watermark is used to delete the file if its cached, remove it to make the file persist after commits.
 local GuiLibrary = shared.GuiLibrary
 local playersService = game:GetService("Players")
 local coreGui = game:GetService("CoreGui")
@@ -1899,6 +1898,264 @@ run(function()
 	})
 end)
 
+local KillauraNearTarget = false
+run(function()
+	local attackIgnore = OverlapParams.new()
+	attackIgnore.FilterType = Enum.RaycastFilterType.Whitelist
+	local function findTouchInterest(tool)
+		return tool and tool:FindFirstChildWhichIsA("TouchTransmitter", true)
+	end
+
+	local Reach = {Enabled = false}
+	local ReachRange = {Value = 1}
+	Reach = GuiLibrary.ObjectsThatCanBeSaved.CombatWindow.Api.CreateOptionsButton({
+		Name = "Reach",
+		Function = function(callback)
+			if callback then
+				task.spawn(function()
+					repeat
+						if entityLibrary.isAlive then
+							local tool = lplr and lplr.Character and lplr.Character:FindFirstChildWhichIsA("Tool")
+							local touch = findTouchInterest(tool)
+							if tool and touch then
+								touch = touch.Parent
+								local chars = {}
+								for i,v in pairs(entityLibrary.entityList) do table.insert(chars, v.Character) end
+								ignorelist.FilterDescendantsInstances = chars
+								local parts = workspace:GetPartBoundsInBox(touch.CFrame, touch.Size + Vector3.new(reachrange.Value, 0, reachrange.Value), ignorelist)
+								for i,v in pairs(parts) do
+									firetouchinterest(touch, v, 1)
+									firetouchinterest(touch, v, 0)
+								end
+							end
+						end
+						task.wait()
+					until not Reach.Enabled
+				end)
+			end
+		end
+	})
+	ReachRange = Reach.CreateSlider({
+		Name = "Range",
+		Min = 1,
+		Max = 20,
+		Function = function(val) end,
+	})
+
+	local Killaura = {Enabled = false}
+	local KillauraCPS = {GetRandomValue = function() return 1 end}
+	local KillauraMethod = {Value = "Normal"}
+	local KillauraTarget = {Enabled = false}
+	local KillauraColor = {Value = 0.44}
+	local KillauraRange = {Value = 1}
+	local KillauraAngle = {Value = 90}
+	local KillauraFakeAngle = {Enabled = false}
+	local KillauraPrediction = {Enabled = true}
+	local KillauraButtonDown = {Enabled = false}
+	local KillauraTargetHighlight = {Enabled = false}
+	local KillauraRangeCircle = {Enabled = false}
+	local KillauraRangeCirclePart
+	local KillauraSwingTick = tick()
+	local KillauraBoxes = {}
+	local OriginalNeckC0
+	local OriginalRootC0
+	for i = 1, 10 do
+		local KillauraBox = Instance.new("BoxHandleAdornment")
+		KillauraBox.Transparency = 0.5
+		KillauraBox.Color3 = Color3.fromHSV(KillauraColor.Hue, KillauraColor.Sat, KillauraColor.Value)
+		KillauraBox.Adornee = nil
+		KillauraBox.AlwaysOnTop = true
+		KillauraBox.Size = Vector3.new(3, 6, 3)
+		KillauraBox.ZIndex = 11
+		KillauraBox.Parent = GuiLibrary.MainGui
+		KillauraBoxes[i] = KillauraBox
+	end
+
+	Killaura = GuiLibrary.ObjectsThatCanBeSaved.BlatantWindow.Api.CreateOptionsButton({
+		Name = "Killaura",
+		Function = function(callback)
+			if callback then
+				if KillauraRangeCirclePart then KillauraRangeCirclePart.Parent = gameCamera end
+				RunLoops:BindToHeartbeat("Killaura", function()
+					for i,v in pairs(KillauraBoxes) do
+						if v.Adornee then
+							local onex, oney, onez = v.Adornee.CFrame:ToEulerAnglesXYZ()
+							v.CFrame = CFrame.new() * CFrame.Angles(-onex, -oney, -onez)
+						end
+					end
+					if entityLibrary.isAlive then
+						if KillauraRangeCirclePart then
+							KillauraRangeCirclePart.CFrame = entityLibrary.character.HumanoidRootPart.CFrame - Vector3.new(0, entityLibrary.character.Humanoid.HipHeight + (entityLibrary.character.HumanoidRootPart.Size.Y / 2) - 0.3, 0)
+						end
+						if KillauraFakeAngle.Enabled then
+							local Neck = entityLibrary.character.Head:FindFirstChild("Neck")
+							local LowerTorso = entityLibrary.character.HumanoidRootPart.Parent and entityLibrary.character.HumanoidRootPart.Parent:FindFirstChild("LowerTorso")
+							local RootC0 = LowerTorso and LowerTorso:FindFirstChild("Root")
+							if Neck and RootC0 then
+								if not OriginalNeckC0 then OriginalNeckC0 = Neck.C0.p end
+								if not OriginalRootC0 then OriginalRootC0 = RootC0.C0.p end
+								if OriginalRootC0 then
+									if targetedplayer ~= nil then
+										local targetPos = targetedplayer.RootPart.Position + Vector3.new(0, targetedplayer.Humanoid.HipHeight + (targetedplayer.RootPart.Size.Y / 2), 0)
+										local lookCFrame = (CFrame.new(Vector3.zero, (Root.CFrame):VectorToObjectSpace((Vector3.new(targetPos.X, targetPos.Y, targetPos.Z) - entityLibrary.character.Head.Position).Unit)))
+										Neck.C0 = CFrame.new(OriginalNeckC0) * CFrame.Angles(lookCFrame.LookVector.Unit.y, 0, 0)
+										RootC0.C0 = (CFrame.new(Vector3.zero, (Root.CFrame):VectorToObjectSpace((Vector3.new(targetPos.X, Root.Position.Y, targetPos.Z) - Root.Position).Unit))) + OriginalRootC0
+									else
+										Neck.C0 = CFrame.new(OriginalNeckC0)
+										RootC0.C0 = CFrame.new(OriginalRootC0)
+									end
+								end
+							end
+						end
+					end
+				end)
+				task.spawn(function()
+					repeat
+						local attackedplayers = {}
+						KillauraNearTarget = false
+						vapeTargetInfo.Targets.Killaura = nil
+						if entityLibrary.isAlive and (not KillauraButtonDown.Enabled or inputService:IsMouseButtonPressed(0)) then
+							local plrs = AllNearPosition(KillauraRange.Value, 100, {Prediction = KillauraPrediction.Enabled})
+							if #plrs > 0 then
+								local tool = lplr.Character:FindFirstChildWhichIsA("Tool")
+								local touch = findTouchInterest(tool)
+								if tool and touch then
+									for i,v in pairs(plrs) do
+										if math.acos(entityLibrary.character.HumanoidRootPart.CFrame.lookVector:Dot((v.RootPart.Position - entityLibrary.character.HumanoidRootPart.Position).Unit)) >= (math.rad(KillauraAngle.Value) / 2) then continue end
+										KillauraNearTarget = true
+										if KillauraTarget.Enabled then
+											table.insert(attackedplayers, v)
+										end
+										vapeTargetInfo.Targets.Killaura = v
+										KillauraNearTarget = true
+										if KillauraPrediction.Enabled then
+											if (entityLibrary.LocalPosition - v.RootPart.Position).Magnitude > KillauraRange.Value then
+												continue
+											end
+										end
+										if KillauraSwingTick <= tick() then
+											tool:Activate()
+											KillauraSwingTick = tick() + (1 / KillauraCPS.GetRandomValue())
+										end
+										if KillauraMethod.Value == "Bypass" then
+											attackIgnore.FilterDescendantsInstances = {v.Character}
+											local parts = workspace:GetPartBoundsInBox(v.RootPart.CFrame, v.Character:GetExtentsSize(), attackIgnore)
+											for i,v2 in pairs(parts) do
+												firetouchinterest(touch.Parent, v2, 1)
+												firetouchinterest(touch.Parent, v2, 0)
+											end
+										elseif KillauraMethod.Value == "Normal" then
+											for i,v2 in pairs(v.Character:GetChildren()) do
+												if v2:IsA("BasePart") then
+													firetouchinterest(touch.Parent, v2, 1)
+													firetouchinterest(touch.Parent, v2, 0)
+												end
+											end
+										else
+											firetouchinterest(touch.Parent, v.RootPart, 1)
+											firetouchinterest(touch.Parent, v.RootPart, 0)
+										end
+									end
+								end
+							end
+						end
+						for i,v in pairs(KillauraBoxes) do
+							local attacked = attackedplayers[i]
+							v.Adornee = attacked and attacked.RootPart
+						end
+						task.wait()
+					until not Killaura.Enabled
+				end)
+			else
+				RunLoops:UnbindFromHeartbeat("Killaura")
+                KillauraNearTarget = false
+				vapeTargetInfo.Targets.Killaura = nil
+				for i,v in pairs(KillauraBoxes) do v.Adornee = nil end
+				if KillauraRangeCirclePart then KillauraRangeCirclePart.Parent = nil end
+			end
+		end,
+		HoverText = "Attack players around you\nwithout aiming at them."
+	})
+	KillauraMethod = Killaura.CreateDropdown({
+		Name = "Mode",
+		List = {"Normal", "Bypass", "Root Only"},
+		Function = function() end
+	})
+	KillauraCPS = Killaura.CreateTwoSlider({
+		Name = "Attacks per second",
+		Min = 1,
+		Max = 20,
+		Default = 8,
+		Default2 = 12
+	})
+	KillauraRange = Killaura.CreateSlider({
+		Name = "Attack range",
+		Min = 1,
+		Max = 150,
+		Function = function(val)
+			if KillauraRangeCirclePart then
+				KillauraRangeCirclePart.Size = Vector3.new(val * 0.7, 0.01, val * 0.7)
+			end
+		end
+	})
+	KillauraAngle = Killaura.CreateSlider({
+		Name = "Max angle",
+		Min = 1,
+		Max = 360,
+		Function = function(val) end,
+		Default = 90
+	})
+	KillauraColor = Killaura.CreateColorSlider({
+		Name = "Target Color",
+		Function = function(hue, sat, val)
+			for i,v in pairs(KillauraBoxes) do
+				v.Color3 = Color3.fromHSV(hue, sat, val)
+			end
+			if KillauraRangeCirclePart then
+				KillauraRangeCirclePart.Color = Color3.fromHSV(hue, sat, val)
+			end
+		end,
+		Default = 1
+	})
+	KillauraButtonDown = Killaura.CreateToggle({
+		Name = "Require mouse down",
+		Function = function() end
+	})
+	KillauraTarget = Killaura.CreateToggle({
+        Name = "Show target",
+        Function = function(callback) end,
+		HoverText = "Shows a red box over the opponent."
+    })
+	KillauraPrediction = Killaura.CreateToggle({
+		Name = "Prediction",
+		Function = function() end
+	})
+	KillauraFakeAngle = Killaura.CreateToggle({
+        Name = "Face target",
+        Function = function() end,
+		HoverText = "Makes your character face the opponent."
+    })
+	KillauraRangeCircle = Killaura.CreateToggle({
+		Name = "Range Visualizer",
+		Function = function(callback)
+			if callback then
+				KillauraRangeCirclePart = Instance.new("MeshPart")
+				KillauraRangeCirclePart.MeshId = "rbxassetid://3726303797"
+				KillauraRangeCirclePart.Color = Color3.fromHSV(KillauraColor.Hue, KillauraColor.Sat, KillauraColor.Value)
+				KillauraRangeCirclePart.CanCollide = false
+				KillauraRangeCirclePart.Anchored = true
+				KillauraRangeCirclePart.Material = Enum.Material.Neon
+				KillauraRangeCirclePart.Size = Vector3.new(KillauraRange.Value * 0.7, 0.01, KillauraRange.Value * 0.7)
+				KillauraRangeCirclePart.Parent = gameCamera
+			else
+				if KillauraRangeCirclePart then
+					KillauraRangeCirclePart:Destroy()
+					KillauraRangeCirclePart = nil
+				end
+			end
+		end
+	})
+end)
 
 run(function()
 	local LongJump = {Enabled = false}
@@ -2204,6 +2461,226 @@ run(function()
 	})
 end)
 
+run(function()
+	local Speed = {Enabled = false}
+	local SpeedValue = {Value = 1}
+	local SpeedMethod = {Value = "AntiCheat A"}
+	local SpeedMoveMethod = {Value = "MoveDirection"}
+	local SpeedDelay = {Value = 0.7}
+	local SpeedPulseDuration = {Value = 100}
+	local SpeedWallCheck = {Enabled = true}
+	local SpeedJump = {Enabled = false}
+	local SpeedJumpHeight = {Value = 20}
+	local SpeedJumpVanilla = {Enabled = false}
+	local SpeedJumpAlways = {Enabled = false}
+	local SpeedAnimation = {Enabled = false}
+	local SpeedDelayTick = tick()
+	local SpeedRaycast = RaycastParams.new()
+	SpeedRaycast.FilterType = Enum.RaycastFilterType.Blacklist
+	SpeedRaycast.RespectCanCollide = true
+	local oldWalkSpeed
+	local SpeedDown
+	local SpeedUp
+	local w = 0
+	local s = 0
+	local a = 0
+	local d = 0
+
+	local alternatelist = {"Normal", "AntiCheat A", "AntiCheat B", "AntiCheat C", "AntiCheat D"}
+	Speed = GuiLibrary.ObjectsThatCanBeSaved.BlatantWindow.Api.CreateOptionsButton({
+		Name = "Speed",
+		Function = function(callback)
+			if callback then
+				w = inputService:IsKeyDown(Enum.KeyCode.W) and -1 or 0
+				s = inputService:IsKeyDown(Enum.KeyCode.S) and 1 or 0
+				a = inputService:IsKeyDown(Enum.KeyCode.A) and -1 or 0
+				d = inputService:IsKeyDown(Enum.KeyCode.D) and 1 or 0
+				table.insert(Speed.Connections, inputService.InputBegan:Connect(function(input1)
+					if inputService:GetFocusedTextBox() == nil then
+						if input1.KeyCode == Enum.KeyCode.W then
+							w = -1
+						end
+						if input1.KeyCode == Enum.KeyCode.S then
+							s = 1
+						end
+						if input1.KeyCode == Enum.KeyCode.A then
+							a = -1
+						end
+						if input1.KeyCode == Enum.KeyCode.D then
+							d = 1
+						end
+					end
+				end))
+				table.insert(Speed.Connections, inputService.InputEnded:Connect(function(input1)
+					if input1.KeyCode == Enum.KeyCode.W then
+						w = 0
+					end
+					if input1.KeyCode == Enum.KeyCode.S then
+						s = 0
+					end
+					if input1.KeyCode == Enum.KeyCode.A then
+						a = 0
+					end
+					if input1.KeyCode == Enum.KeyCode.D then
+						d = 0
+					end
+				end))
+				local pulsetick = tick()
+				task.spawn(function()
+					repeat
+						pulsetick = tick() + (SpeedPulseDuration.Value / 100)
+						task.wait((SpeedDelay.Value / 10) + (SpeedPulseDuration.Value / 100))
+					until (not Speed.Enabled)
+				end)
+				RunLoops:BindToHeartbeat("Speed", function(delta)
+					if entityLibrary.isAlive and (typeof(entityLibrary.character.HumanoidRootPart) ~= "Instance" or isnetworkowner(entityLibrary.character.HumanoidRootPart)) then
+						local movevec = (SpeedMoveMethod.Value == "Manual" and calculateMoveVector(Vector3.new(a + d, 0, w + s)) or entityLibrary.character.Humanoid.MoveDirection).Unit
+						movevec = movevec == movevec and Vector3.new(movevec.X, 0, movevec.Z) or Vector3.zero
+						SpeedRaycast.FilterDescendantsInstances = {lplr.Character, cam}
+						if SpeedMethod.Value == "Velocity" then
+							if SpeedAnimation.Enabled then
+								for i,v in pairs(entityLibrary.character.Humanoid:GetPlayingAnimationTracks()) do
+									if v.Name == "WalkAnim" or v.Name == "RunAnim" then
+										v:AdjustSpeed(entityLibrary.character.Humanoid.WalkSpeed / 16)
+									end
+								end
+							end
+							local newvelo = movevec * SpeedValue.Value
+							entityLibrary.character.HumanoidRootPart.Velocity = Vector3.new(newvelo.X, entityLibrary.character.HumanoidRootPart.Velocity.Y, newvelo.Z)
+						elseif SpeedMethod.Value == "CFrame" then
+							local newpos = (movevec * (math.max(SpeedValue.Value - entityLibrary.character.Humanoid.WalkSpeed, 0) * delta))
+							if SpeedWallCheck.Enabled then
+								local ray = workspace:Raycast(entityLibrary.character.HumanoidRootPart.Position, newpos, SpeedRaycast)
+								if ray then newpos = (ray.Position - entityLibrary.character.HumanoidRootPart.Position) end
+							end
+							entityLibrary.character.HumanoidRootPart.CFrame = entityLibrary.character.HumanoidRootPart.CFrame + newpos
+						elseif SpeedMethod.Value == "TP" then
+							if SpeedDelayTick <= tick() then
+								SpeedDelayTick = tick() + (SpeedDelay.Value / 10)
+								local newpos = (movevec * SpeedValue.Value)
+								if SpeedWallCheck.Enabled then
+									local ray = workspace:Raycast(entityLibrary.character.HumanoidRootPart.Position, newpos, SpeedRaycast)
+									if ray then newpos = (ray.Position - entityLibrary.character.HumanoidRootPart.Position) end
+								end
+								entityLibrary.character.HumanoidRootPart.CFrame = entityLibrary.character.HumanoidRootPart.CFrame + newpos
+							end
+						elseif SpeedMethod.Value == "Pulse" then
+							local pulsenum = (SpeedPulseDuration.Value / 100)
+							local newvelo = movevec * (SpeedValue.Value + (entityLibrary.character.Humanoid.WalkSpeed - SpeedValue.Value) * (1 - (math.max(pulsetick - tick(), 0)) / pulsenum))
+							entityLibrary.character.HumanoidRootPart.Velocity = Vector3.new(newvelo.X, entityLibrary.character.HumanoidRootPart.Velocity.Y, newvelo.Z)
+						elseif SpeedMethod.Value == "WalkSpeed" then
+							if oldWalkSpeed == nil then
+								oldWalkSpeed = entityLibrary.character.Humanoid.WalkSpeed
+							end
+							entityLibrary.character.Humanoid.WalkSpeed = SpeedValue.Value
+						end
+						if SpeedJump.Enabled and (SpeedJumpAlways.Enabled or KillauraNearTarget) then
+							if (entityLibrary.character.Humanoid.FloorMaterial ~= Enum.Material.Air) and entityLibrary.character.Humanoid.MoveDirection ~= Vector3.zero then
+								if SpeedJumpVanilla.Enabled then
+									entityLibrary.character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+								else
+									entityLibrary.character.HumanoidRootPart.Velocity = Vector3.new(entityLibrary.character.HumanoidRootPart.Velocity.X, SpeedJumpHeight.Value, entityLibrary.character.HumanoidRootPart.Velocity.Z)
+								end
+							end
+						end
+					end
+				end)
+			else
+				SpeedDelayTick = 0
+				if oldWalkSpeed then
+					entityLibrary.character.Humanoid.WalkSpeed = oldWalkSpeed
+					oldWalkSpeed = nil
+				end
+				RunLoops:UnbindFromHeartbeat("Speed")
+			end
+		end,
+		ExtraText = function()
+			if GuiLibrary.ObjectsThatCanBeSaved["Text GUIAlternate TextToggle"].Api.Enabled then
+				return alternatelist[table.find(SpeedMethod.List, SpeedMethod.Value)]
+			end
+			return SpeedMethod.Value
+		end
+	})
+	SpeedMethod = Speed.CreateDropdown({
+		Name = "Mode",
+		List = {"Velocity", "CFrame", "TP", "Pulse", "WalkSpeed"},
+		Function = function(val)
+			if oldWalkSpeed then
+				entityLibrary.character.Humanoid.WalkSpeed = oldWalkSpeed
+				oldWalkSpeed = nil
+			end
+			SpeedDelay.Object.Visible = val == "TP" or val == "Pulse"
+			SpeedWallCheck.Object.Visible = val == "CFrame" or val == "TP"
+			SpeedPulseDuration.Object.Visible = val == "Pulse"
+			SpeedAnimation.Object.Visible = val == "Velocity"
+		end
+	})
+	SpeedMoveMethod = Speed.CreateDropdown({
+		Name = "Movement",
+		List = {"Manual", "MoveDirection"},
+		Function = function(val) end
+	})
+	SpeedValue = Speed.CreateSlider({
+		Name = "Speed",
+		Min = 1,
+		Max = 150,
+		Function = function(val) end
+	})
+	SpeedDelay = Speed.CreateSlider({
+		Name = "Delay",
+		Min = 1,
+		Max = 50,
+		Function = function(val)
+			SpeedDelayTick = tick() + (val / 10)
+		end,
+		Default = 7,
+		Double = 10
+	})
+	SpeedPulseDuration = Speed.CreateSlider({
+		Name = "Pulse Duration",
+		Min = 1,
+		Max = 100,
+		Function = function() end,
+		Default = 50,
+		Double = 100
+	})
+	SpeedJump = Speed.CreateToggle({
+		Name = "AutoJump",
+		Function = function(callback)
+			if SpeedJumpHeight.Object then SpeedJumpHeight.Object.Visible = callback end
+			if SpeedJumpAlways.Object then
+				SpeedJump.Object.ToggleArrow.Visible = callback
+				SpeedJumpAlways.Object.Visible = callback
+			end
+			if SpeedJumpVanilla.Object then SpeedJumpVanilla.Object.Visible = callback end
+		end,
+		Default = true
+	})
+	SpeedJumpHeight = Speed.CreateSlider({
+		Name = "Jump Height",
+		Min = 0,
+		Max = 30,
+		Default = 25,
+		Function = function() end
+	})
+	SpeedJumpAlways = Speed.CreateToggle({
+		Name = "Always Jump",
+		Function = function() end
+	})
+	SpeedJumpVanilla = Speed.CreateToggle({
+		Name = "Real Jump",
+		Function = function() end
+	})
+	SpeedWallCheck = Speed.CreateToggle({
+		Name = "Wall Check",
+		Function = function() end,
+		Default = true
+	})
+	SpeedAnimation = Speed.CreateToggle({
+		Name = "Slowdown Anim",
+		Function = function() end
+	})
+end)
 
 run(function()
 	local SpinBot = {Enabled = false}
@@ -2379,6 +2856,109 @@ run(function()
         Function = function() end,
         Default = true
     })
+end)
+
+
+run(function()
+	local Disguise = {Enabled = false}
+	local DisguiseId = {Value = ""}
+	local DisguiseDescription
+
+	local function Disguisechar(char)
+		task.spawn(function()
+			if not char then return end
+			local hum = char:WaitForChild("Humanoid", 9e9)
+			char:WaitForChild("Head", 9e9)
+			local DisguiseDescription
+			if DisguiseDescription == nil then
+				local suc = false
+				repeat
+					suc = pcall(function()
+						DisguiseDescription = playersService:GetHumanoidDescriptionFromUserId(DisguiseId.Value == "" and 239702688 or tonumber(DisguiseId.Value))
+					end)
+					if suc then break end
+					task.wait(1)
+				until suc or (not Disguise.Enabled)
+			end
+			if (not Disguise.Enabled) then return end
+			local desc = hum:WaitForChild("HumanoidDescription", 2) or {HeightScale = 1, SetEmotes = function() end, SetEquippedEmotes = function() end}
+			DisguiseDescription.HeightScale = desc.HeightScale
+			char.Archivable = true
+			local Disguiseclone = char:Clone()
+			Disguiseclone.Name = "Disguisechar"
+			Disguiseclone.Parent = workspace
+			for i,v in pairs(Disguiseclone:GetChildren()) do
+				if v:IsA("Accessory") or v:IsA("ShirtGraphic") or v:IsA("Shirt") or v:IsA("Pants") then
+					v:Destroy()
+				end
+			end
+			if not Disguiseclone:FindFirstChildWhichIsA("Humanoid") then
+				Disguiseclone:Destroy()
+				return
+			end
+			Disguiseclone.Humanoid:ApplyDescriptionClientServer(DisguiseDescription)
+			for i,v in pairs(char:GetChildren()) do
+				if (v:IsA("Accessory") and v:GetAttribute("InvItem") == nil and v:GetAttribute("ArmorSlot") == nil) or v:IsA("ShirtGraphic") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") or v:IsA("Folder") or v:IsA("Model") then
+					v.Parent = game
+				end
+			end
+			char.ChildAdded:Connect(function(v)
+				if ((v:IsA("Accessory") and v:GetAttribute("InvItem") == nil and v:GetAttribute("ArmorSlot") == nil) or v:IsA("ShirtGraphic") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors")) and v:GetAttribute("Disguise") == nil then
+					repeat task.wait() v.Parent = game until v.Parent == game
+				end
+			end)
+			for i,v in pairs(Disguiseclone:WaitForChild("Animate"):GetChildren()) do
+				v:SetAttribute("Disguise", true)
+				if not char:FindFirstChild("Animate") then return end
+				local real = char.Animate:FindFirstChild(v.Name)
+				if v:IsA("StringValue") and real then
+					real.Parent = game
+					v.Parent = char.Animate
+				end
+			end
+			for i,v in pairs(Disguiseclone:GetChildren()) do
+				v:SetAttribute("Disguise", true)
+				if v:IsA("Accessory") then
+					for i2,v2 in pairs(v:GetDescendants()) do
+						if v2:IsA("Weld") and v2.Part1 then
+							v2.Part1 = char[v2.Part1.Name]
+						end
+					end
+					v.Parent = char
+				elseif v:IsA("ShirtGraphic") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") then
+					v.Parent = char
+				elseif v.Name == "Head" and char.Head:IsA("MeshPart") then
+					char.Head.MeshId = v.MeshId
+				end
+			end
+			local localface = char:FindFirstChild("face", true)
+			local cloneface = Disguiseclone:FindFirstChild("face", true)
+			if localface and cloneface then localface.Parent = game cloneface.Parent = char.Head end
+			desc:SetEmotes(DisguiseDescription:GetEmotes())
+			desc:SetEquippedEmotes(DisguiseDescription:GetEquippedEmotes())
+			Disguiseclone:Destroy()
+		end)
+	end
+
+	Disguise = GuiLibrary.ObjectsThatCanBeSaved.RenderWindow.Api.CreateOptionsButton({
+		Name = "Disguise",
+		Function = function(callback)
+			if callback then
+				table.insert(Disguise.Connections, lplr.CharacterAdded:Connect(Disguisechar))
+				Disguisechar(lplr.Character)
+			end
+		end
+	})
+	DisguiseId = Disguise.CreateTextBox({
+		Name = "Disguise",
+		TempText = "Disguise User Id",
+		FocusLost = function(enter)
+			if Disguise.Enabled then
+				Disguise.ToggleButton(false)
+				Disguise.ToggleButton(false)
+			end
+		end
+	})
 end)
 
 run(function()
@@ -5632,265 +6212,4 @@ run(function()
 	createKeystroke(Enum.KeyCode.A, UDim2.new(0, 0, 0, 42), UDim2.new(0, 7, 0, 5))
 	createKeystroke(Enum.KeyCode.D, UDim2.new(0, 76, 0, 42), UDim2.new(0, 8, 0, 5))
 	createKeystroke(Enum.KeyCode.Space, UDim2.new(0, 0, 0, 83), UDim2.new(0, 25, 0, -10))
-end)
-
-
-
-run(function()
-	local Killaura = {Enabled = false}
-	local moose = game.Players.LocalPlayer:GetMouse()
-	
-	Killaura = GuiLibrary.ObjectsThatCanBeSaved.BlatantWindow.Api.CreateOptionsButton({
-		Name = "Killaura", 
-		HoverText = "Good",
-		Function = function(callback)
-			if callback then
-				game:GetService('RunService').RenderStepped:Connect(function()
-					task.wait(0.1)
-					local blackNigger, WhiteNigger
-					for _,v in pairs(game.Players:GetPlayers()) do
-						if v.Name == game.Players.LocalPlayer.Name then continue end
-						if v.Character:WaitForChild('Humanoid').Health < 0 then continue end
-						if v then
-							local chary = v.Character
-							local Dist = v:DistanceFromCharacter(game.Players.LocalPlayer.Character:WaitForChild('HumanoidRootPart').Position)
-							if not chary or Dist > KillauraRange.Value or (WhiteNigger and Dist >= WhiteNigger) then
-								continue
-							end
-							
-							blackNigger = v
-							WhiteNigger = Dist
-						end
-					end
-					if blackNigger and blackNigger.Character:WaitForChild('Humanoid').Health > 0 then
-						game:GetService("ReplicatedStorage").Remotes.ItemRemotes.SwordAttack:FireServer(blackNigger.Character.PrimaryPart, blackNigger.Character.Humanoid.MoveDirection + Vector3.new(0,0.5,0), game.Players.LocalPlayer.HotbarFolder['1']:GetAttribute('ItemName')) -- Predicktion :)
-					end
-				end)
-			end
-		end
-	})
-
-	KillauraRange = Killaura.CreateSlider({
-		Name = 'Range',
-		Min = 30,
-		Max = 100,
-		Function = function(val) end,
-		Default = 30
-	})
-end)
-
-run(function()
-	local autoToxic = {Enabled = false}
-	local Kills = game.Players.LocalPlayer.leaderstats.Kills or game.Players.Leaderstats.Kills
-	autoToxic = GuiLibrary.ObjectsThatCanBeSaved.BlatantWindow.Api.CreateOptionsButton({
-		Name = 'AutoToxic',
-		HoverText = 'Its toxic when you kill somebody',
-		Function = function(callback)
-			if callback then 
-				Kills:GetPropertyChangedSignal("Value"):Connect(function()
-					if Kills.Value == 0 then return end
-					local theLine
-					local randomNumber = math.random(1, #Killsays.ObjectList)
-					
-					for i,v in pairs(Killsays.ObjectList) do
-						if i == randomNumber then
-							local args = {
-								[1] = v,
-								[2] = "All"
-							}
-					
-							game:GetService("ReplicatedStorage").DefaultChatSystemChatEvents.SayMessageRequest:FireServer(unpack(args))
-						end
-					end
-				end)
-			end
-		end
-	})
-
-	Killsays = autoToxic.CreateTextList({
-		Name = 'Killsay',
-		TempText = 'Add a thing for u to say when killing someone'
-	})
-end)
-
-run(function()
-	local SpeedModule = {Enabled = false}
-	SpeedModule = GuiLibrary.ObjectsThatCanBeSaved.BlatantWindow.Api.CreateOptionsButton({
-		Name = 'Speed',
-		HoverText = 'Makes you go zoom',
-		Function = function(callback)
-			if callback then
-				repeat
-					task.wait()
-					game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame = game.Players.LocalPlayer.Character.HumanoidRootPart.CFrame + game.Players.LocalPlayer.Character.Humanoid.MoveDirection * HowMuch.Value / 10
-				until not SpeedModule.Enabled
-			end
-		end
-		})
-		HowMuch = SpeedModule.CreateSlider({
-			Name = 'SpeedValue',
-			Min = 0.1,
-			Max = 5,
-			Function = function(val) end,
-			default = 1
-		})
-end)
-
-run(function()
-	local PlayerRotation = {Enabled = false}
-	PlayerRotation = GuiLibrary.ObjectsThatCanBeSaved.UtilityWindow.Api.CreateOptionsButton({
-		Name = 'PlayerRotation',
-		Function = function(callback)
-			if callback then
-				game.Players.LocalPlayer.Character.HumanoidRootPart.Orientation = Vector3.new(XValue.Value, YValue.Value, ZValue.Value)
-			end
-		end
-	})
-	XValue = PlayerRotation.CreateSlider({
-		Name = 'X',
-		Min = 0,
-		Max = 180,
-		Function = function(val) end,
-		Default = 180
-	})
-	YValue = PlayerRotation.CreateSlider({
-		Name = 'Y',
-		Min = 0,
-		Max = 180,
-		Function = function(val) end,
-		Default = 180
-	})
-	ZValue = PlayerRotation.CreateSlider({
-		Name = 'Z',
-		Min = 0,
-		Max = 180,
-		Function = function(val) end,
-		Default = 180
-	})
-end)
-
-run(function()
-	local Nuker = {Enabled = false}
-	Nuker = GuiLibrary.ObjectsThatCanBeSaved.WorldWindow.Api.CreateOptionsButton({
-		Name = 'Nuker',
-		HoverText = 'Breaks beds when you get close to them (breaks your own too...)',
-		Function = function(callback)
-			if callback then
-				game:GetService("RunService").RenderStepped:Connect(function()
-					local Nigger, blak
-					for ii,vv in pairs(game.workspace.Map.Beds:GetChildren()) do
-						if not vv then return end
-						if IgnoreTeamBed and vv:GetAttribute('TeamName') == game.Players.LocalPlayer.Team then return end
-						if (game.Players.LocalPlayer.Character:WaitForChild('HumanoidRootPart').Position - vv:WaitForChild('Hitbox').Position).Magnitude < 30 then
-							blak = vv
-						else continue
-						end
-				
-						if blak then
-							game:GetService("ReplicatedStorage").Remotes.DamageBlock:InvokeServer(blak, game.Players.LocalPlayer.HotbarFolder["2"]:GetAttribute('ItemName'))
-						end
-					end
-				end)
-			end
-		end
-	})
-end)
-
-run(function()
-	local AdminsFolder = game.ReplicatedStorage.Admins
-	local CoolDownTable = {}
-	local StaffDetector = {Enabled = false}
-	StaffDetector = GuiLibrary.ObjectsThatCanBeSaved.UtilityWindow.Api.CreateOptionsButton({
-		Name = 'StaffDetector',
-		Function = function(callback)
-			if callback then
-				repeat
-					task.wait()
-					for _, v in ipairs(AdminsFolder:GetChildren()) do
-						for i, vv in ipairs(game.Players:GetPlayers()) do
-							if v.Name == vv.Name then
-								if table.find(CoolDownTable, v.Name) then return end
-								warningNotification('Staff Detector', 'Staff Detected '.. vv.Name, 10)
-								table.insert(CoolDownTable, v.Name)
-								task.wait(60)
-								table.remove(CoolDownTable, v.Name)
-							end
-						end
-					end 
-				until not StaffDetector.Enabled
-			end
-		end
-	})
-end)
-
-
-run(function()
-	local KillCreditStealer = {Enabled = false}
-	KillCreditStealer = GuiLibrary.ObjectsThatCanBeSaved.UtilityWindow.Api.CreateOptionsButton({
-		Name = 'Kill Credit Stealer',
-		Function = function(callback)
-			if callback then
-				repeat
-					task.wait(0.1)
-					for _, player in pairs(game.Players:GetPlayers()) do
-						game.ReplicatedStorage.Remotes.GiveTag:FireServer(player.Character, 'Sword')
-					end
-				until not KillCreditStealer.Enabled
-			end
-		end
-	})
-end)
-
-run(function()
-	local ConstLootDropper = {Enabled = false}
-	ConstLootDropper = GuiLibrary.ObjectsThatCanBeSaved.WorldWindow.Api.CreateOptionsButton({
-		Name = 'Constant Loot Dropper',
-		HoverText = 'Drops fake valuables FE',
-		Function = function(callback)
-			if callback then
-				repeat
-					task.wait()
-					game:GetService("ReplicatedStorage").Remotes.DropItem:FireServer(tostring(lootType.Value), tostring(math.huge))
-				until not ConstLootDropper.Enabled
-			end
-		end
-	})
-	lootType = ConstLootDropper.CreateDropdown({
-		Name = 'Loot To Drop',
-		List = {'Iron', 'Diamond', 'Emerald'},
-		Function = function(val) end
-	})
-end)
-
-run(function()
-	local AutoSuffocate = {Enabled = false}
-	AutoSuffocate = GuiLibrary.ObjectsThatCanBeSaved.UtilityWindow.Api.CreateOptionsButton({
-		Name = 'autoSuffocate',
-		Function = function(callback)
-			if callback then
-				game:GetService('RunService').RenderStepped:Connect(function()
-					local theClosest, theDistance
-					for _,v in pairs(game.Players:GetPlayers()) do
-						if v.Name == game.Players.LocalPlayer.Name then continue end
-						local theCharacter = v.Character
-						local dist = v:DistanceFromCharacter(game.Players.LocalPlayer.Character.HumanoidRootPart.Position)
-						if not theCharacter or dist > SuffocateRange.Value or (theDistance and dist >= theDistance) then
-							continue
-						end
-						theDistance = dist
-						theClosest = v
-					end
-					if theClosest and theClosest.Character.Humanoid.Health > 0 then
-						game:GetService("ReplicatedStorage").Remotes.ItemRemotes.PlaceBlock:InvokeServer(theClosest.Character.Head.Position, 'Wool')
-					end
-				end)
-			end
-		end
-	})
-	SuffocateRange = AutoSuffocate.CreateSlider({
-		Name = 'Range',
-		Min = 1,
-		Max = 30,
-		Function = function(val) end
-	}) 
 end)
